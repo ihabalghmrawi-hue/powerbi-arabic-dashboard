@@ -1,392 +1,367 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 type Employee = {
-  employee_id: string
-  employee_name: string
-  department: string
-  region: string
-  hire_date: string
-  customer_count: number
-  rank: number
+  employee_id: string; employee_name: string; department: string
+  region: string; hire_date: string; customer_count: number; rank: number
 }
-
 type Customer = {
-  customer_id: string
-  customer_name: string
-  region: string
-  registration_date: string
-  assigned_employee_id: string
+  customer_id: string; customer_name: string; region: string
+  registration_date: string; assigned_employee_id: string
 }
-
-type Region = {
-  region: string
-  customer_count: number
-  percentage: number
-}
+type Region = { region: string; customer_count: number; percentage: number }
 
 type Props = {
-  employees: Employee[]
-  customers: Customer[]
-  regions: Region[]
-  totalCustomers: number
+  employees: Employee[]; customers: Customer[]
+  regions: Region[]; totalCustomers: number
 }
 
-function toAr(n: number) {
-  return String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[parseInt(d)])
+function toAr(n: number | string) {
+  return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d])
+}
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('ar-SA', {
-    day: 'numeric', month: 'long', year: 'numeric'
-  })
+const DEPT_COLORS: Record<string, { bg: string; color: string; label: string }> = {
+  'المبيعات': { bg: '#D1FAE5', color: '#065F46', label: 'مبيعات' },
+  'الدعم':    { bg: '#EEF2FF', color: '#3730A3', label: 'دعم' },
+  'العمليات': { bg: '#FEF3C7', color: '#92400E', label: 'عمليات' },
 }
-
-const DEPT_CLASS: Record<string, string> = {
-  'المبيعات': 'd-sales',
-  'الدعم': 'd-support',
-  'العمليات': 'd-ops',
-}
-
-const RANK_CLASS = ['', 'r1', 'r2', 'r3']
+const BAR_COLORS = ['#6366F1', '#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6']
+const REGION_COLORS = ['#6366F1', '#8B5CF6', '#06B6D4', '#10B981']
 
 export default function Dashboard({ employees, customers, regions, totalCustomers }: Props) {
   const [tab, setTab] = useState<'perf' | 'region' | 'detail'>('perf')
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
   const [filterRegion, setFilterRegion] = useState('')
-  const [filterDept, setFilterDept] = useState('')
+  const [filterDept, setFilterDept]     = useState('')
 
-  const topEmployee = employees[0]
-  const avgPerEmployee = employees.length
-    ? Math.round(totalCustomers / employees.length)
-    : 0
+  const topEmp    = employees[0]
+  const avgPerEmp = employees.length ? Math.round(totalCustomers / employees.length) : 0
   const topRegion = regions[0]
+  const maxCount  = employees[0]?.customer_count ?? 1
 
-  const filteredEmployees = employees.filter((e) => {
-    if (filterRegion && e.region !== filterRegion) return false
-    if (filterDept && e.department !== filterDept) return false
-    return true
-  })
+  const filtered = useMemo(() =>
+    employees.filter(e =>
+      (!filterRegion || e.region === filterRegion) &&
+      (!filterDept   || e.department === filterDept)
+    ), [employees, filterRegion, filterDept])
 
-  const maxCount = filteredEmployees[0]?.customer_count ?? 1
+  const empCustomers = useMemo(() =>
+    selectedEmp ? customers.filter(c => c.assigned_employee_id === selectedEmp.employee_id) : []
+  , [selectedEmp, customers])
 
-  const empCustomers = selectedEmployee
-    ? customers.filter((c) => c.assigned_employee_id === selectedEmployee.employee_id)
-    : []
-
-  function goDetail(emp: Employee) {
-    setSelectedEmployee(emp)
-    setTab('detail')
-  }
+  const tabs = [
+    { id: 'perf',   label: 'أداء الموظفين',  icon: '📊' },
+    { id: 'region', label: 'تحليل المناطق',  icon: '🗺' },
+    { id: 'detail', label: 'تفاصيل الموظف',  icon: '👤' },
+  ] as const
 
   return (
-    <div>
-      {/* Top bar */}
-      <div style={{
-        background: '#1B2A4A', color: '#fff', padding: '0 24px',
-        height: 56, display: 'flex', alignItems: 'center', gap: 16
-      }}>
-        <div style={{
-          background: '#F2C811', color: '#1B2A4A', width: 32, height: 32,
-          borderRadius: 6, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0
-        }}>BI</div>
-        <h1 style={{ fontSize: 15, fontWeight: 500 }}>تحليلات الموظفين والعملاء</h1>
-        <div style={{ marginRight: 'auto', display: 'flex', gap: 4 }}>
-          {(['perf', 'region', 'detail'] as const).map((t, i) => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              background: tab === t ? '#F2C811' : 'rgba(255,255,255,0.1)',
-              border: 'none', color: tab === t ? '#1B2A4A' : 'rgba(255,255,255,0.75)',
-              padding: '6px 14px', borderRadius: 4, cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 12, fontWeight: tab === t ? 600 : 400
-            }}>
-              {['أداء الموظفين', 'تحليل المناطق', 'تفاصيل الموظف'][i]}
-            </button>
-          ))}
-        </div>
+    <div className="page-body fade-in">
+
+      {/* Tab Bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 28, background: '#FFFFFF', padding: 6, borderRadius: 12, border: '1px solid #E2E8F0', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '8px 18px', borderRadius: 8, border: 'none',
+            fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', transition: 'all .2s',
+            background: tab === t.id ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : 'transparent',
+            color: tab === t.id ? '#fff' : '#64748B',
+            boxShadow: tab === t.id ? '0 4px 12px rgba(99,102,241,.35)' : 'none',
+          }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Page 1: Employee Performance */}
+      {/* ── TAB 1: Employee Performance ── */}
       {tab === 'perf' && (
-        <div style={{ padding: 20 }}>
-          {/* Slicers */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
             {[
-              {
-                label: 'المنطقة',
-                options: ['كل المناطق', 'الشمال', 'الجنوب', 'الشرق', 'الغرب'],
-                value: filterRegion,
-                onChange: (v: string) => setFilterRegion(v === 'كل المناطق' ? '' : v),
-              },
-              {
-                label: 'القسم',
-                options: ['كل الأقسام', 'المبيعات', 'الدعم', 'العمليات'],
-                value: filterDept,
-                onChange: (v: string) => setFilterDept(v === 'كل الأقسام' ? '' : v),
-              },
-            ].map((s) => (
-              <div key={s.label} style={{
-                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8,
-                padding: '8px 14px', flex: 1
-              }}>
-                <label style={{ display: 'block', fontSize: 10, color: '#94A3B8', marginBottom: 2 }}>
-                  {s.label}
-                </label>
-                <select
-                  value={s.value || s.options[0]}
-                  onChange={(e) => s.onChange(e.target.value)}
-                  style={{ border: 'none', background: 'transparent', fontSize: 12, color: '#1B2A4A', fontFamily: 'inherit', outline: 'none', cursor: 'pointer', width: '100%', direction: 'rtl' }}
-                >
-                  {s.options.map((o) => <option key={o}>{o}</option>)}
+              { label: '🌍 المنطقة', opts: ['كل المناطق', 'الشمال', 'الجنوب', 'الشرق', 'الغرب'], val: filterRegion, set: (v: string) => setFilterRegion(v === 'كل المناطق' ? '' : v) },
+              { label: '🏢 القسم',   opts: ['كل الأقسام', 'المبيعات', 'الدعم', 'العمليات'],      val: filterDept,   set: (v: string) => setFilterDept(v === 'كل الأقسام' ? '' : v) },
+            ].map(f => (
+              <div key={f.label} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 160 }}>
+                <label style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: .6 }}>{f.label}</label>
+                <select value={f.val || f.opts[0]} onChange={e => f.set(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: '#0F172A', fontFamily: 'inherit', outline: 'none', cursor: 'pointer', direction: 'rtl' }}>
+                  {f.opts.map(o => <option key={o}>{o}</option>)}
                 </select>
               </div>
             ))}
+            {(filterRegion || filterDept) && (
+              <button onClick={() => { setFilterRegion(''); setFilterDept('') }}
+                className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }}>
+                ✕ إلغاء الفلتر
+              </button>
+            )}
           </div>
 
-          {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-            <KpiCard color="#F2C811" label="إجمالي العملاء" value={toAr(totalCustomers)} sub="إجمالي العملاء المسجلين" />
-            <KpiCard color="#1D9E75" label="أفضل موظف" value={topEmployee?.employee_name ?? '—'} sub={`${toAr(topEmployee?.customer_count ?? 0)} عميل · ${topEmployee?.department ?? ''}`} large />
-            <KpiCard color="#378ADD" label="متوسط العملاء لكل موظف" value={toAr(avgPerEmployee)} sub={`من ${toAr(employees.length)} موظفين`} />
+          {/* KPI Cards */}
+          <div className="kpi-grid">
+            <KpiCard color="accent" icon="👥" label="إجمالي العملاء" value={toAr(totalCustomers)} badge={{ text: '▲ نشط', type: 'up' }} />
+            <KpiCard color="green"  icon="🏆" label="أفضل موظف" value={topEmp?.employee_name ?? '—'} sub={`${toAr(topEmp?.customer_count ?? 0)} عميل · ${topEmp?.department ?? ''}`} sm />
+            <KpiCard color="gold"   icon="📈" label="متوسط العملاء / موظف" value={toAr(avgPerEmp)} sub={`من ${toAr(employees.length)} موظفين`} />
+            <KpiCard color="cyan"   icon="🗺" label="أفضل منطقة" value={topRegion?.region ?? '—'} sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} sm />
           </div>
 
-          {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
-            {/* Bar chart */}
-            <div style={{ background: '#fff', borderRadius: 10, padding: '16px 18px', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                العملاء حسب الموظف
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+            {/* Bar Chart */}
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">📊 العملاء حسب الموظف</span>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>{toAr(filtered.length)} موظف</span>
               </div>
-              {filteredEmployees.map((emp) => (
-                <div key={emp.employee_id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9 }}>
-                  <span style={{ fontSize: 12, color: '#64748B', width: 110, textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {emp.employee_name}
-                  </span>
-                  <div style={{ flex: 1, height: 18, background: '#F0F2F5', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{
+              {filtered.map((emp, i) => (
+                <div key={emp.employee_id} className="bar-row">
+                  <span className="bar-label">{emp.employee_name}</span>
+                  <div className="bar-track">
+                    <div className="bar-fill" style={{
                       width: `${(emp.customer_count / maxCount) * 100}%`,
-                      height: '100%', borderRadius: 4,
-                      background: emp.rank === 1 ? '#F2C811' : emp.rank <= 4 ? '#378ADD' : '#1D9E75',
-                      transition: 'width .6s'
+                      background: BAR_COLORS[i % BAR_COLORS.length],
                     }} />
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1B2A4A', width: 30, textAlign: 'left' }}>
-                    {toAr(emp.customer_count)}
-                  </span>
+                  <span className="bar-val">{toAr(emp.customer_count)}</span>
                 </div>
               ))}
             </div>
 
-            {/* Ranking table */}
-            <div style={{ background: '#fff', borderRadius: 10, padding: '16px 18px', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                ترتيب الموظفين
+            {/* Ranking Table */}
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">🏅 ترتيب الموظفين</span>
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table className="data-table">
                 <thead>
                   <tr>
-                    {['الترتيب', 'الموظف', 'القسم', 'العدد'].map((h) => (
-                      <th key={h} style={{ background: '#1B2A4A', color: '#fff', padding: '8px 10px', textAlign: 'right', fontWeight: 500, fontSize: 11 }}>{h}</th>
-                    ))}
+                    <th>#</th><th>الموظف</th><th>القسم</th><th>العدد</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEmployees.slice(0, 8).map((emp) => (
-                    <tr key={emp.employee_id}
-                      onClick={() => goDetail(emp)}
-                      style={{ borderBottom: '1px solid #F0F2F5', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = '')}
-                    >
-                      <td style={{ padding: '8px 10px' }}>
-                        <span style={{
-                          display: 'inline-flex', width: 22, height: 22, borderRadius: '50%',
-                          alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
-                          background: emp.rank === 1 ? '#F2C811' : emp.rank === 2 ? '#C0C0C0' : emp.rank === 3 ? '#CD7F32' : '#F0F2F5',
-                          color: emp.rank <= 2 ? '#1B2A4A' : emp.rank === 3 ? '#fff' : '#64748B'
-                        }}>
-                          {toAr(emp.rank)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>{emp.employee_name}</td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <span style={{
-                          fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
-                          background: emp.department === 'المبيعات' ? '#E1F5EE' : emp.department === 'الدعم' ? '#E6F1FB' : '#FAEEDA',
-                          color: emp.department === 'المبيعات' ? '#0F6E56' : emp.department === 'الدعم' ? '#185FA5' : '#854F0B',
-                        }}>
-                          {emp.department}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>{toAr(emp.customer_count)}</td>
-                    </tr>
-                  ))}
+                  {filtered.slice(0, 8).map((emp) => {
+                    const dept = DEPT_COLORS[emp.department] ?? { bg: '#F1F5F9', color: '#64748B', label: emp.department }
+                    return (
+                      <tr key={emp.employee_id} onClick={() => { setSelectedEmp(emp); setTab('detail') }}>
+                        <td>
+                          <span className={`rank-badge ${emp.rank <= 3 ? `rank-${emp.rank}` : 'rank-n'}`}>
+                            {toAr(emp.rank)}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 500 }}>{emp.employee_name}</td>
+                        <td>
+                          <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 99, fontWeight: 600, background: dept.bg, color: dept.color }}>
+                            {dept.label}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 700 }}>{toAr(emp.customer_count)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
-              <div style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: 8, border: '1px dashed #E2E8F0', borderRadius: 6, marginTop: 10, background: '#F8FAFC' }}>
-                انقر على أي صف للانتقال إلى تفاصيل الموظف ←
+              <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '8px', border: '1px dashed #E2E8F0', borderRadius: 8, background: '#F8FAFC' }}>
+                انقر على صف لعرض تفاصيل الموظف ←
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Page 2: Region Analysis */}
+      {/* ── TAB 2: Regions ── */}
       {tab === 'region' && (
-        <div style={{ padding: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-            <KpiCard color="#F2C811" label="أفضل منطقة" value={topRegion?.region ?? '—'} sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} large />
-            <KpiCard color="#378ADD" label="إجمالي العملاء" value={toAr(totalCustomers)} sub={`في ${toAr(regions.length)} مناطق`} />
-            <KpiCard color="#1D9E75" label="متوسط المناطق" value={toAr(regions.length ? Math.round(totalCustomers / regions.length) : 0)} sub="متوسط لكل منطقة" />
+        <>
+          <div className="kpi-grid">
+            <KpiCard color="accent" icon="🥇" label="أفضل منطقة"      value={topRegion?.region ?? '—'}        sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} sm />
+            <KpiCard color="gold"   icon="👥" label="إجمالي العملاء"  value={toAr(totalCustomers)}              sub={`في ${toAr(regions.length)} مناطق`} />
+            <KpiCard color="green"  icon="📊" label="متوسط المناطق"  value={toAr(regions.length ? Math.round(totalCustomers / regions.length) : 0)} sub="متوسط لكل منطقة" />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
-            <div style={{ background: '#fff', borderRadius: 10, padding: '16px 18px', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                العملاء حسب المنطقة
-              </div>
-              {/* Column chart */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 130, padding: '0 8px' }}>
-                {regions.map((r, i) => {
-                  const maxR = regions[0]?.customer_count ?? 1
-                  const colors = ['#F2C811', '#378ADD', '#378ADD', '#1D9E75']
-                  return (
-                    <div key={r.region} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flex: 1 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#1B2A4A' }}>{toAr(r.customer_count)}</span>
-                      <div style={{ width: '100%', height: `${(r.customer_count / maxR) * 100}%`, background: colors[i] ?? '#378ADD', borderRadius: '4px 4px 0 0' }} />
-                      <span style={{ fontSize: 10, color: '#64748B' }}>{r.region}</span>
-                    </div>
-                  )
-                })}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">🗺 العملاء حسب المنطقة</span>
               </div>
 
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 16 }}>
-                <thead>
-                  <tr>
-                    {['الترتيب', 'المنطقة', 'العملاء', 'النسبة'].map((h) => (
-                      <th key={h} style={{ background: '#1B2A4A', color: '#fff', padding: '8px 10px', textAlign: 'right', fontWeight: 500, fontSize: 11 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+              {/* Column Chart */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 160, marginBottom: 28, padding: '0 8px' }}>
+                {regions.map((r, i) => (
+                  <div key={r.region} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#0F172A' }}>{toAr(r.customer_count)}</span>
+                    <div style={{
+                      width: '100%',
+                      height: `${(r.customer_count / (regions[0]?.customer_count ?? 1)) * 100}%`,
+                      background: REGION_COLORS[i] ?? '#6366F1',
+                      borderRadius: '6px 6px 0 0',
+                      transition: 'height .8s cubic-bezier(.4,0,.2,1)',
+                      position: 'relative',
+                    }}>
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.15)', borderRadius: 'inherit' }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{r.region}</span>
+                  </div>
+                ))}
+              </div>
+
+              <table className="data-table">
+                <thead><tr><th>الترتيب</th><th>المنطقة</th><th>العملاء</th><th>النسبة</th></tr></thead>
                 <tbody>
                   {regions.map((r, i) => (
-                    <tr key={r.region} style={{ borderBottom: '1px solid #F0F2F5' }}>
-                      <td style={{ padding: '8px 10px' }}>
-                        <span style={{
-                          display: 'inline-flex', width: 22, height: 22, borderRadius: '50%',
-                          alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
-                          background: i === 0 ? '#F2C811' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#F0F2F5',
-                          color: i < 2 ? '#1B2A4A' : i === 2 ? '#fff' : '#64748B'
-                        }}>
-                          {toAr(i + 1)}
+                    <tr key={r.region}>
+                      <td><span className={`rank-badge ${i < 3 ? `rank-${i + 1}` : 'rank-n'}`}>{toAr(i + 1)}</span></td>
+                      <td style={{ fontWeight: 500 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: REGION_COLORS[i], flexShrink: 0 }} />
+                          {r.region}
                         </span>
                       </td>
-                      <td style={{ padding: '8px 10px' }}>{r.region}</td>
-                      <td style={{ padding: '8px 10px' }}>{toAr(r.customer_count)}</td>
-                      <td style={{ padding: '8px 10px' }}>{toAr(Math.round(r.percentage))}٪</td>
+                      <td style={{ fontWeight: 700 }}>{toAr(r.customer_count)}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden' }}>
+                            <div style={{ width: `${r.percentage}%`, height: '100%', background: REGION_COLORS[i], borderRadius: 99 }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, minWidth: 32 }}>{toAr(Math.round(r.percentage))}٪</span>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div style={{ background: '#fff', borderRadius: 10, padding: '16px 18px', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                توزيع المناطق
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {regions.map((r, i) => {
-                  const colors = ['#F2C811', '#378ADD', '#378ADD', '#1D9E75']
-                  const sizes = [12, 10, 9, 7]
-                  return (
-                    <div key={r.region} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, flexDirection: 'row-reverse' }}>
-                      <div style={{ width: sizes[i] ?? 7, height: sizes[i] ?? 7, borderRadius: '50%', background: colors[i] ?? '#378ADD', flexShrink: 0 }} />
-                      {r.region} — {toAr(r.customer_count)} عميل ({toAr(Math.round(r.percentage))}٪)
+            {/* Region Legend Card */}
+            <div className="card">
+              <div className="card-header"><span className="card-title">📍 مقارنة المناطق</span></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {regions.map((r, i) => (
+                  <div key={r.region}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{r.region}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: REGION_COLORS[i] }}>{toAr(r.customer_count)}</span>
                     </div>
-                  )
-                })}
+                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{ width: `${r.percentage}%`, height: '100%', background: `linear-gradient(90deg,${REGION_COLORS[i]},${REGION_COLORS[i]}88)`, borderRadius: 99, transition: 'width 1s ease' }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>{toAr(Math.round(r.percentage))}٪ من الإجمالي</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Page 3: Employee Detail */}
+      {/* ── TAB 3: Employee Detail ── */}
       {tab === 'detail' && (
-        <div style={{ padding: 20 }}>
-          {selectedEmployee ? (
-            <>
-              <div style={{
-                background: '#fff', borderRadius: 10, padding: '16px 20px',
-                border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14
-              }}>
+        selectedEmp ? (
+          <>
+            {/* Employee Header Card */}
+            <div className="card" style={{ marginBottom: 16, background: 'linear-gradient(135deg,#0F172A,#1E1B4B)', border: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
                 <div style={{
-                  width: 48, height: 48, borderRadius: '50%', background: '#1B2A4A',
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#6366F1,#8B5CF6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#F2C811', fontWeight: 700, fontSize: 15, flexShrink: 0
+                  color: '#fff', fontWeight: 800, fontSize: 22, flexShrink: 0,
+                  border: '3px solid rgba(255,255,255,.2)',
                 }}>
-                  {selectedEmployee.employee_name.slice(0, 2)}
+                  {selectedEmp.employee_name.charAt(0)}
                 </div>
-                <div>
-                  <h2 style={{ fontSize: 17, fontWeight: 600 }}>{selectedEmployee.employee_name}</h2>
-                  <p style={{ fontSize: 12, color: '#64748B' }}>قسم {selectedEmployee.department} · {selectedEmployee.employee_id}</p>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{selectedEmp.employee_name}</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(255,255,255,.1)', color: 'rgba(255,255,255,.8)' }}>{selectedEmp.employee_id}</span>
+                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(99,102,241,.3)', color: '#A5B4FC' }}>{selectedEmp.department}</span>
+                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.7)' }}>📍 {selectedEmp.region}</span>
+                  </div>
                 </div>
-                <div style={{ marginRight: 'auto', textAlign: 'left' }}>
-                  <div style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>إجمالي العملاء</div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: '#1B2A4A' }}>{toAr(selectedEmployee.customer_count)}</div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 4 }}>إجمالي العملاء</div>
+                  <div style={{ fontSize: 36, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{toAr(selectedEmp.customer_count)}</div>
+                  <div style={{ fontSize: 11, color: '#A5B4FC', marginTop: 4 }}>ترتيب #{toAr(selectedEmp.rank)}</div>
                 </div>
               </div>
-
-              <div style={{ background: '#fff', borderRadius: 10, padding: '16px 18px', border: '1px solid #E2E8F0' }}>
-                <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                  قائمة العملاء التابعين
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      {['رقم العميل', 'اسم العميل', 'المنطقة', 'تاريخ التسجيل'].map((h) => (
-                        <th key={h} style={{ background: '#1B2A4A', color: '#fff', padding: '8px 10px', textAlign: 'right', fontWeight: 500, fontSize: 11 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {empCustomers.map((c) => (
-                      <tr key={c.customer_id} style={{ borderBottom: '1px solid #F0F2F5' }}>
-                        <td style={{ padding: '8px 10px' }}>{c.customer_id}</td>
-                        <td style={{ padding: '8px 10px' }}>{c.customer_name}</td>
-                        <td style={{ padding: '8px 10px' }}>{c.region}</td>
-                        <td style={{ padding: '8px 10px' }}>{formatDate(c.registration_date)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 60, color: '#94A3B8', fontSize: 14 }}>
-              انقر على موظف في صفحة &quot;أداء الموظفين&quot; لعرض تفاصيله
             </div>
-          )}
-        </div>
-      )}
 
-      <footer style={{ textAlign: 'center', padding: 16, fontSize: 11, color: '#94A3B8', borderTop: '1px solid #E2E8F0', marginTop: 20 }}>
-        تم إنشاؤه بمساعدة Claude · Anthropic | مشروع تحليلات الموظفين والعملاء
-      </footer>
+            {/* Stats row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
+              <StatMini label="تاريخ التعيين" value={fmtDate(selectedEmp.hire_date)} icon="📅" />
+              <StatMini label="المنطقة" value={selectedEmp.region} icon="🗺" />
+              <StatMini label="القسم" value={selectedEmp.department} icon="🏢" />
+            </div>
+
+            {/* Customers table */}
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">👥 العملاء التابعون ({toAr(empCustomers.length)})</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedEmp(null)}>← رجوع</button>
+              </div>
+              <table className="data-table">
+                <thead><tr><th>رقم العميل</th><th>اسم العميل</th><th>المنطقة</th><th>تاريخ التسجيل</th></tr></thead>
+                <tbody>
+                  {empCustomers.map(c => (
+                    <tr key={c.customer_id}>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: '#6366F1', fontWeight: 600 }}>{c.customer_id}</td>
+                      <td style={{ fontWeight: 500 }}>{c.customer_name}</td>
+                      <td>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#EEF2FF', color: '#3730A3', fontWeight: 600 }}>{c.region}</span>
+                      </td>
+                      <td style={{ color: '#64748B' }}>{fmtDate(c.registration_date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="card" style={{ textAlign: 'center', padding: '60px 24px' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>👤</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A', marginBottom: 8 }}>لم يتم اختيار موظف</div>
+            <div style={{ fontSize: 13, color: '#94A3B8', marginBottom: 20 }}>انتقل إلى تبويب "أداء الموظفين" وانقر على موظف</div>
+            <button className="btn btn-primary" onClick={() => setTab('perf')}>📊 عرض الموظفين</button>
+          </div>
+        )
+      )}
     </div>
   )
 }
 
-function KpiCard({ color, label, value, sub, large }: { color: string; label: string; value: string; sub: string; large?: boolean }) {
+function KpiCard({ color, icon, label, value, sub, badge, sm }: {
+  color: string; icon: string; label: string; value: string
+  sub?: string; badge?: { text: string; type: 'up' | 'down' | 'neu' }; sm?: boolean
+}) {
   return (
-    <div style={{
-      background: '#fff', borderRadius: 10, padding: '16px 18px',
-      border: '1px solid #E2E8F0', borderRight: `4px solid ${color}`
-    }}>
-      <div style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: large ? 17 : 26, fontWeight: 600, color: '#1B2A4A', paddingTop: large ? 4 : 0 }}>{value}</div>
-      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{sub}</div>
+    <div className={`kpi-card ${color}`}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div className="kpi-label">{label}</div>
+          <div className={`kpi-value${sm ? ' sm' : ''}`}>{value}</div>
+          {sub && <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{sub}</div>}
+          {badge && <div style={{ marginTop: 8 }}><span className={`kpi-badge ${badge.type}`}>{badge.text}</span></div>}
+        </div>
+        <div className={`kpi-icon ${color}`} style={{ fontSize: 20 }}>{icon}</div>
+      </div>
+    </div>
+  )
+}
+
+function StatMini({ label, value, icon }: { label: string; value: string; icon: string }) {
+  return (
+    <div className="card" style={{ padding: '14px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 20 }}>{icon}</span>
+        <div>
+          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: .5 }}>{label}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{value}</div>
+        </div>
+      </div>
     </div>
   )
 }
