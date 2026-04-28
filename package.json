@@ -1,6 +1,6 @@
 {
   "name": "powerbi-arabic-dashboard",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,6 +14,7 @@
     "next": "14.2.5",
     "react": "^18",
     "react-dom": "^18",
+    "recharts": "^2.12.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

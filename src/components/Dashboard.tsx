@@ -1,6 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+
+// Recharts charts (client-only)
+const EmployeeBarChart = dynamic(() => import('./charts/EmployeeBarChart'), { ssr: false, loading: () => <ChartSkeleton /> })
+const GrowthLineChart  = dynamic(() => import('./charts/GrowthLineChart'),  { ssr: false, loading: () => <ChartSkeleton /> })
+const RegionPieChart   = dynamic(() => import('./charts/RegionPieChart'),   { ssr: false, loading: () => <ChartSkeleton /> })
 
 type Employee = {
   employee_id: string; employee_name: string; department: string
@@ -11,357 +17,335 @@ type Customer = {
   registration_date: string; assigned_employee_id: string
 }
 type Region = { region: string; customer_count: number; percentage: number }
+type GrowthPoint = { month: string; label: string; new_customers: number; total_customers: number }
 
 type Props = {
   employees: Employee[]; customers: Customer[]
   regions: Region[]; totalCustomers: number
 }
 
-function toAr(n: number | string) {
-  return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d])
-}
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' })
-}
+function toAr(n: number | string) { return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]) }
+function fmtDate(d: string) { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' }) }
 
-const DEPT_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  'المبيعات': { bg: '#D1FAE5', color: '#065F46', label: 'مبيعات' },
-  'الدعم':    { bg: '#EEF2FF', color: '#3730A3', label: 'دعم' },
-  'العمليات': { bg: '#FEF3C7', color: '#92400E', label: 'عمليات' },
+const DEPT_STYLE: Record<string, { bg: string; color: string }> = {
+  'المبيعات': { bg: '#D1FAE5', color: '#065F46' },
+  'الدعم':    { bg: '#EEF2FF', color: '#3730A3' },
+  'العمليات': { bg: '#FEF3C7', color: '#92400E' },
 }
-const BAR_COLORS = ['#6366F1', '#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6']
 const REGION_COLORS = ['#6366F1', '#8B5CF6', '#06B6D4', '#10B981']
 
 export default function Dashboard({ employees, customers, regions, totalCustomers }: Props) {
-  const [tab, setTab] = useState<'perf' | 'region' | 'detail'>('perf')
+  const [tab, setTab]               = useState<'overview' | 'employees' | 'regions' | 'customers'>('overview')
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
   const [filterRegion, setFilterRegion] = useState('')
   const [filterDept, setFilterDept]     = useState('')
+  const [filterEmp, setFilterEmp]       = useState('')
+  const [dateFrom, setDateFrom]         = useState('')
+  const [dateTo, setDateTo]             = useState('')
+  const [growthData, setGrowthData]     = useState<GrowthPoint[]>([])
+  const [regionData, setRegionData]     = useState<{ name: string; value: number }[]>([])
+
+  // Fetch growth data once
+  useEffect(() => {
+    fetch('/api/growth')
+      .then(r => r.json())
+      .then(d => { setGrowthData(d.growth ?? []); setRegionData(d.regionData ?? []) })
+  }, [])
 
   const topEmp    = employees[0]
-  const avgPerEmp = employees.length ? Math.round(totalCustomers / employees.length) : 0
   const topRegion = regions[0]
-  const maxCount  = employees[0]?.customer_count ?? 1
+  const avgPerEmp = employees.length ? Math.round(totalCustomers / employees.length) : 0
 
-  const filtered = useMemo(() =>
-    employees.filter(e =>
-      (!filterRegion || e.region === filterRegion) &&
-      (!filterDept   || e.department === filterDept)
-    ), [employees, filterRegion, filterDept])
+  // Filtered customers
+  const filteredCustomers = useMemo(() => customers.filter(c => {
+    if (filterRegion && c.region !== filterRegion)                     return false
+    if (filterEmp    && c.assigned_employee_id !== filterEmp)          return false
+    if (dateFrom     && c.registration_date < dateFrom)               return false
+    if (dateTo       && c.registration_date > dateTo)                 return false
+    return true
+  }), [customers, filterRegion, filterEmp, dateFrom, dateTo])
 
-  const empCustomers = useMemo(() =>
-    selectedEmp ? customers.filter(c => c.assigned_employee_id === selectedEmp.employee_id) : []
-  , [selectedEmp, customers])
+  // Filtered employees for bar chart
+  const filteredEmployees = useMemo(() => employees.filter(e =>
+    (!filterRegion || e.region === filterRegion) &&
+    (!filterDept   || e.department === filterDept)
+  ), [employees, filterRegion, filterDept])
 
   const tabs = [
-    { id: 'perf',   label: 'أداء الموظفين',  icon: '📊' },
-    { id: 'region', label: 'تحليل المناطق',  icon: '🗺' },
-    { id: 'detail', label: 'تفاصيل الموظف',  icon: '👤' },
+    { id: 'overview',   label: 'نظرة عامة',    icon: '◈' },
+    { id: 'employees',  label: 'الموظفون',      icon: '👥' },
+    { id: 'regions',    label: 'المناطق',       icon: '🗺' },
+    { id: 'customers',  label: 'العملاء',       icon: '🏢' },
   ] as const
+
+  const activeFilters = [filterRegion, filterDept, filterEmp, dateFrom, dateTo].filter(Boolean).length
 
   return (
     <div className="page-body fade-in">
 
-      {/* Tab Bar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 28, background: '#FFFFFF', padding: 6, borderRadius: 12, border: '1px solid #E2E8F0', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '8px 18px', borderRadius: 8, border: 'none',
-            fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', transition: 'all .2s',
-            background: tab === t.id ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : 'transparent',
-            color: tab === t.id ? '#fff' : '#64748B',
-            boxShadow: tab === t.id ? '0 4px 12px rgba(99,102,241,.35)' : 'none',
-          }}>
-            <span>{t.icon}</span>{t.label}
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 4, background: '#fff', padding: 5, borderRadius: 12, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+              borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', transition: 'all .2s',
+              background: tab === t.id ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : 'transparent',
+              color: tab === t.id ? '#fff' : '#64748B',
+              boxShadow: tab === t.id ? '0 4px 12px rgba(99,102,241,.3)' : 'none',
+            }}>
+              <span style={{ fontSize: 14 }}>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+        {activeFilters > 0 && (
+          <button onClick={() => { setFilterRegion(''); setFilterDept(''); setFilterEmp(''); setDateFrom(''); setDateTo('') }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEE2E2', color: '#991B1B', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ✕ إلغاء الفلاتر ({activeFilters})
           </button>
-        ))}
+        )}
       </div>
 
-      {/* ── TAB 1: Employee Performance ── */}
-      {tab === 'perf' && (
+      {/* ── Filter Bar ── */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
+        <FilterSelect label="🌍 المنطقة" value={filterRegion}
+          options={[{ v: '', l: 'كل المناطق' }, ...regions.map(r => ({ v: r.region, l: r.region }))]}
+          onChange={setFilterRegion} />
+        <FilterSelect label="🏢 القسم" value={filterDept}
+          options={[{ v: '', l: 'كل الأقسام' }, { v: 'المبيعات', l: 'المبيعات' }, { v: 'الدعم', l: 'الدعم' }, { v: 'العمليات', l: 'العمليات' }]}
+          onChange={setFilterDept} />
+        <FilterSelect label="👤 الموظف" value={filterEmp}
+          options={[{ v: '', l: 'كل الموظفين' }, ...employees.map(e => ({ v: e.employee_id, l: e.employee_name }))]}
+          onChange={setFilterEmp} />
+        <DateInput label="📅 من" value={dateFrom} onChange={setDateFrom} />
+        <DateInput label="📅 إلى" value={dateTo}   onChange={setDateTo} />
+      </div>
+
+      {/* ══════════════ TAB: OVERVIEW ══════════════ */}
+      {tab === 'overview' && (
         <>
-          {/* Filters */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-            {[
-              { label: '🌍 المنطقة', opts: ['كل المناطق', 'الشمال', 'الجنوب', 'الشرق', 'الغرب'], val: filterRegion, set: (v: string) => setFilterRegion(v === 'كل المناطق' ? '' : v) },
-              { label: '🏢 القسم',   opts: ['كل الأقسام', 'المبيعات', 'الدعم', 'العمليات'],      val: filterDept,   set: (v: string) => setFilterDept(v === 'كل الأقسام' ? '' : v) },
-            ].map(f => (
-              <div key={f.label} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 160 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: .6 }}>{f.label}</label>
-                <select value={f.val || f.opts[0]} onChange={e => f.set(e.target.value)}
-                  style={{ border: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: '#0F172A', fontFamily: 'inherit', outline: 'none', cursor: 'pointer', direction: 'rtl' }}>
-                  {f.opts.map(o => <option key={o}>{o}</option>)}
-                </select>
-              </div>
-            ))}
-            {(filterRegion || filterDept) && (
-              <button onClick={() => { setFilterRegion(''); setFilterDept('') }}
-                className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }}>
-                ✕ إلغاء الفلتر
-              </button>
-            )}
+          {/* KPI Row */}
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+            <KpiCard color="accent" icon="👥" label="إجمالي العملاء"       value={toAr(totalCustomers)}        badge="▲ نشط" badgeType="up" />
+            <KpiCard color="green"  icon="🏆" label="أفضل موظف"            value={topEmp?.employee_name ?? '—'} sub={`${toAr(topEmp?.customer_count ?? 0)} عميل`} sm />
+            <KpiCard color="gold"   icon="📊" label="متوسط / موظف"         value={toAr(avgPerEmp)}             sub={`من ${toAr(employees.length)} موظفين`} />
+            <KpiCard color="cyan"   icon="🗺" label="أفضل منطقة"           value={topRegion?.region ?? '—'}    sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} sm />
           </div>
 
-          {/* KPI Cards */}
-          <div className="kpi-grid">
-            <KpiCard color="accent" icon="👥" label="إجمالي العملاء" value={toAr(totalCustomers)} badge={{ text: '▲ نشط', type: 'up' }} />
-            <KpiCard color="green"  icon="🏆" label="أفضل موظف" value={topEmp?.employee_name ?? '—'} sub={`${toAr(topEmp?.customer_count ?? 0)} عميل · ${topEmp?.department ?? ''}`} sm />
-            <KpiCard color="gold"   icon="📈" label="متوسط العملاء / موظف" value={toAr(avgPerEmp)} sub={`من ${toAr(employees.length)} موظفين`} />
-            <KpiCard color="cyan"   icon="🗺" label="أفضل منطقة" value={topRegion?.region ?? '—'} sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} sm />
+          {/* Charts row 1 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16, marginBottom: 16 }}>
+            <ChartCard title="📊 العملاء حسب الموظف" subtitle="مرتّب تنازلياً حسب الأداء">
+              <EmployeeBarChart data={filteredEmployees} />
+              <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+                {[['#6366F1','المبيعات'],['#8B5CF6','الدعم'],['#06B6D4','العمليات']].map(([c, l]) => (
+                  <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748B' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0 }} />{l}
+                  </span>
+                ))}
+              </div>
+            </ChartCard>
+
+            <ChartCard title="🥧 العملاء حسب المنطقة" subtitle="نسبة كل منطقة من الإجمالي">
+              <RegionPieChart data={regionData} />
+            </ChartCard>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
-            {/* Bar Chart */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">📊 العملاء حسب الموظف</span>
-                <span style={{ fontSize: 11, color: '#94A3B8' }}>{toAr(filtered.length)} موظف</span>
-              </div>
-              {filtered.map((emp, i) => (
-                <div key={emp.employee_id} className="bar-row">
-                  <span className="bar-label">{emp.employee_name}</span>
-                  <div className="bar-track">
-                    <div className="bar-fill" style={{
-                      width: `${(emp.customer_count / maxCount) * 100}%`,
-                      background: BAR_COLORS[i % BAR_COLORS.length],
-                    }} />
-                  </div>
-                  <span className="bar-val">{toAr(emp.customer_count)}</span>
-                </div>
-              ))}
-            </div>
+          {/* Charts row 2 - full width growth */}
+          <ChartCard title="📈 نمو قاعدة العملاء عبر الزمن" subtitle="الخط النيلي = الإجمالي التراكمي · الخط البرتقالي المتقطع = الجدد شهرياً">
+            <GrowthLineChart data={growthData} />
+          </ChartCard>
+        </>
+      )}
 
-            {/* Ranking Table */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">🏅 ترتيب الموظفين</span>
+      {/* ══════════════ TAB: EMPLOYEES ══════════════ */}
+      {tab === 'employees' && (
+        <>
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 20 }}>
+            <KpiCard color="accent" icon="👥" label="الموظفون" value={toAr(filteredEmployees.length)} />
+            <KpiCard color="gold"   icon="📊" label="إجمالي العملاء" value={toAr(totalCustomers)} />
+            <KpiCard color="green"  icon="📈" label="متوسط / موظف"   value={toAr(avgPerEmp)} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
+            <ChartCard title="📊 مخطط الأداء" subtitle="عدد العملاء لكل موظف">
+              <EmployeeBarChart data={filteredEmployees} />
+            </ChartCard>
+
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between' }}>
+                <span className="card-title">📋 جدول الموظفين</span>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>{toAr(filteredEmployees.length)} موظف</span>
               </div>
               <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th><th>الموظف</th><th>القسم</th><th>العدد</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>المنطقة</th><th>العملاء</th></tr></thead>
                 <tbody>
-                  {filtered.slice(0, 8).map((emp) => {
-                    const dept = DEPT_COLORS[emp.department] ?? { bg: '#F1F5F9', color: '#64748B', label: emp.department }
+                  {filteredEmployees.map(e => {
+                    const dept = DEPT_STYLE[e.department] ?? { bg: '#F1F5F9', color: '#64748B' }
                     return (
-                      <tr key={emp.employee_id} onClick={() => { setSelectedEmp(emp); setTab('detail') }}>
+                      <tr key={e.employee_id} onClick={() => { setSelectedEmp(e); setTab('customers') }}>
+                        <td><span className={`rank-badge rank-${e.rank <= 3 ? e.rank : 'n'}`}>{toAr(e.rank)}</span></td>
+                        <td style={{ fontWeight: 600 }}>{e.employee_name}</td>
+                        <td><span style={{ padding: '3px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600, background: dept.bg, color: dept.color }}>{e.department}</span></td>
+                        <td style={{ color: '#64748B' }}>{e.region}</td>
                         <td>
-                          <span className={`rank-badge ${emp.rank <= 3 ? `rank-${emp.rank}` : 'rank-n'}`}>
-                            {toAr(emp.rank)}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 50, height: 5, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden' }}>
+                              <div style={{ width: `${(e.customer_count / (employees[0]?.customer_count ?? 1)) * 100}%`, height: '100%', background: '#6366F1', borderRadius: 99 }} />
+                            </div>
+                            <span style={{ fontWeight: 700 }}>{toAr(e.customer_count)}</span>
+                          </div>
                         </td>
-                        <td style={{ fontWeight: 500 }}>{emp.employee_name}</td>
-                        <td>
-                          <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 99, fontWeight: 600, background: dept.bg, color: dept.color }}>
-                            {dept.label}
-                          </span>
-                        </td>
-                        <td style={{ fontWeight: 700 }}>{toAr(emp.customer_count)}</td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '8px', border: '1px dashed #E2E8F0', borderRadius: 8, background: '#F8FAFC' }}>
-                انقر على صف لعرض تفاصيل الموظف ←
-              </div>
             </div>
           </div>
         </>
       )}
 
-      {/* ── TAB 2: Regions ── */}
-      {tab === 'region' && (
+      {/* ══════════════ TAB: REGIONS ══════════════ */}
+      {tab === 'regions' && (
         <>
-          <div className="kpi-grid">
-            <KpiCard color="accent" icon="🥇" label="أفضل منطقة"      value={topRegion?.region ?? '—'}        sub={`${toAr(topRegion?.customer_count ?? 0)} عميل`} sm />
-            <KpiCard color="gold"   icon="👥" label="إجمالي العملاء"  value={toAr(totalCustomers)}              sub={`في ${toAr(regions.length)} مناطق`} />
-            <KpiCard color="green"  icon="📊" label="متوسط المناطق"  value={toAr(regions.length ? Math.round(totalCustomers / regions.length) : 0)} sub="متوسط لكل منطقة" />
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 20 }}>
+            {regions.map((r, i) => (
+              <div key={r.region} className="kpi-card" style={{ borderRight: `4px solid ${REGION_COLORS[i] ?? '#6366F1'}` }}>
+                <div className="kpi-label">{r.region}</div>
+                <div className="kpi-value" style={{ fontSize: 24 }}>{toAr(r.customer_count)}</div>
+                <div className="progress-bar" style={{ marginTop: 10 }}>
+                  <div className="progress-fill" style={{ width: `${r.percentage}%`, background: REGION_COLORS[i] }} />
+                </div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>{toAr(Math.round(r.percentage))}٪ من الإجمالي</div>
+              </div>
+            ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">🗺 العملاء حسب المنطقة</span>
-              </div>
-
-              {/* Column Chart */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 160, marginBottom: 28, padding: '0 8px' }}>
-                {regions.map((r, i) => (
-                  <div key={r.region} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#0F172A' }}>{toAr(r.customer_count)}</span>
-                    <div style={{
-                      width: '100%',
-                      height: `${(r.customer_count / (regions[0]?.customer_count ?? 1)) * 100}%`,
-                      background: REGION_COLORS[i] ?? '#6366F1',
-                      borderRadius: '6px 6px 0 0',
-                      transition: 'height .8s cubic-bezier(.4,0,.2,1)',
-                      position: 'relative',
-                    }}>
-                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.15)', borderRadius: 'inherit' }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{r.region}</span>
-                  </div>
-                ))}
-              </div>
-
-              <table className="data-table">
-                <thead><tr><th>الترتيب</th><th>المنطقة</th><th>العملاء</th><th>النسبة</th></tr></thead>
-                <tbody>
-                  {regions.map((r, i) => (
-                    <tr key={r.region}>
-                      <td><span className={`rank-badge ${i < 3 ? `rank-${i + 1}` : 'rank-n'}`}>{toAr(i + 1)}</span></td>
-                      <td style={{ fontWeight: 500 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: REGION_COLORS[i], flexShrink: 0 }} />
-                          {r.region}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 700 }}>{toAr(r.customer_count)}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ flex: 1, height: 6, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ width: `${r.percentage}%`, height: '100%', background: REGION_COLORS[i], borderRadius: 99 }} />
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, minWidth: 32 }}>{toAr(Math.round(r.percentage))}٪</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Region Legend Card */}
-            <div className="card">
-              <div className="card-header"><span className="card-title">📍 مقارنة المناطق</span></div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {regions.map((r, i) => (
-                  <div key={r.region}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{r.region}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: REGION_COLORS[i] }}>{toAr(r.customer_count)}</span>
-                    </div>
-                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{ width: `${r.percentage}%`, height: '100%', background: `linear-gradient(90deg,${REGION_COLORS[i]},${REGION_COLORS[i]}88)`, borderRadius: 99, transition: 'width 1s ease' }} />
-                    </div>
-                    <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>{toAr(Math.round(r.percentage))}٪ من الإجمالي</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <ChartCard title="🥧 توزيع المناطق" subtitle="نسبة عملاء كل منطقة">
+              <RegionPieChart data={regionData} />
+            </ChartCard>
+            <ChartCard title="📈 النمو التراكمي" subtitle="إجمالي العملاء عبر الزمن">
+              <GrowthLineChart data={growthData} />
+            </ChartCard>
           </div>
         </>
       )}
 
-      {/* ── TAB 3: Employee Detail ── */}
-      {tab === 'detail' && (
-        selectedEmp ? (
-          <>
-            {/* Employee Header Card */}
-            <div className="card" style={{ marginBottom: 16, background: 'linear-gradient(135deg,#0F172A,#1E1B4B)', border: 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#6366F1,#8B5CF6)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 800, fontSize: 22, flexShrink: 0,
-                  border: '3px solid rgba(255,255,255,.2)',
-                }}>
-                  {selectedEmp.employee_name.charAt(0)}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{selectedEmp.employee_name}</div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(255,255,255,.1)', color: 'rgba(255,255,255,.8)' }}>{selectedEmp.employee_id}</span>
-                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(99,102,241,.3)', color: '#A5B4FC' }}>{selectedEmp.department}</span>
-                    <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.7)' }}>📍 {selectedEmp.region}</span>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 4 }}>إجمالي العملاء</div>
-                  <div style={{ fontSize: 36, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{toAr(selectedEmp.customer_count)}</div>
-                  <div style={{ fontSize: 11, color: '#A5B4FC', marginTop: 4 }}>ترتيب #{toAr(selectedEmp.rank)}</div>
-                </div>
+      {/* ══════════════ TAB: CUSTOMERS ══════════════ */}
+      {tab === 'customers' && (
+        <>
+          {selectedEmp && (
+            <div style={{ background: 'linear-gradient(135deg,#0F172A,#1E1B4B)', borderRadius: 12, padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 16 }}>
+                {selectedEmp.employee_name.charAt(0)}
               </div>
-            </div>
-
-            {/* Stats row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-              <StatMini label="تاريخ التعيين" value={fmtDate(selectedEmp.hire_date)} icon="📅" />
-              <StatMini label="المنطقة" value={selectedEmp.region} icon="🗺" />
-              <StatMini label="القسم" value={selectedEmp.department} icon="🏢" />
-            </div>
-
-            {/* Customers table */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">👥 العملاء التابعون ({toAr(empCustomers.length)})</span>
-                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedEmp(null)}>← رجوع</button>
+              <div>
+                <div style={{ color: '#fff', fontWeight: 700 }}>{selectedEmp.employee_name}</div>
+                <div style={{ color: 'rgba(255,255,255,.5)', fontSize: 12 }}>{selectedEmp.department} · {selectedEmp.region}</div>
               </div>
+              <div style={{ marginRight: 'auto', textAlign: 'left' }}>
+                <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 10 }}>العملاء</div>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: 22 }}>{toAr(selectedEmp.customer_count)}</div>
+              </div>
+              <button onClick={() => setSelectedEmp(null)} style={{ background: 'rgba(255,255,255,.1)', border: 'none', color: 'rgba(255,255,255,.6)', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>✕ إلغاء</button>
+            </div>
+          )}
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="card-title">🏢 قائمة العملاء</span>
+              <span style={{ fontSize: 12, color: '#94A3B8', background: '#F1F5F9', padding: '3px 10px', borderRadius: 99 }}>
+                {toAr(filteredCustomers.length)} عميل
+              </span>
+            </div>
+            <div style={{ maxHeight: 520, overflowY: 'auto' }}>
               <table className="data-table">
-                <thead><tr><th>رقم العميل</th><th>اسم العميل</th><th>المنطقة</th><th>تاريخ التسجيل</th></tr></thead>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr><th>رقم العميل</th><th>الاسم</th><th>المنطقة</th><th>الموظف المسؤول</th><th>تاريخ التسجيل</th></tr>
+                </thead>
                 <tbody>
-                  {empCustomers.map(c => (
-                    <tr key={c.customer_id}>
-                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: '#6366F1', fontWeight: 600 }}>{c.customer_id}</td>
-                      <td style={{ fontWeight: 500 }}>{c.customer_name}</td>
-                      <td>
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#EEF2FF', color: '#3730A3', fontWeight: 600 }}>{c.region}</span>
-                      </td>
-                      <td style={{ color: '#64748B' }}>{fmtDate(c.registration_date)}</td>
-                    </tr>
-                  ))}
+                  {filteredCustomers.map(c => {
+                    const emp = employees.find(e => e.employee_id === c.assigned_employee_id)
+                    return (
+                      <tr key={c.customer_id}>
+                        <td style={{ fontFamily: 'monospace', fontSize: 12, color: '#6366F1', fontWeight: 600 }}>{c.customer_id}</td>
+                        <td style={{ fontWeight: 500 }}>{c.customer_name}</td>
+                        <td><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#EEF2FF', color: '#3730A3', fontWeight: 600 }}>{c.region}</span></td>
+                        <td style={{ color: '#64748B', fontSize: 12 }}>{emp?.employee_name ?? c.assigned_employee_id}</td>
+                        <td style={{ color: '#94A3B8', fontSize: 12 }}>{fmtDate(c.registration_date)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
-          </>
-        ) : (
-          <div className="card" style={{ textAlign: 'center', padding: '60px 24px' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>👤</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#0F172A', marginBottom: 8 }}>لم يتم اختيار موظف</div>
-            <div style={{ fontSize: 13, color: '#94A3B8', marginBottom: 20 }}>انتقل إلى تبويب "أداء الموظفين" وانقر على موظف</div>
-            <button className="btn btn-primary" onClick={() => setTab('perf')}>📊 عرض الموظفين</button>
           </div>
-        )
+        </>
       )}
     </div>
   )
 }
 
-function KpiCard({ color, icon, label, value, sub, badge, sm }: {
+// ── Sub-components ────────────────────────────────────────────
+
+function KpiCard({ color, icon, label, value, sub, badge, badgeType, sm }: {
   color: string; icon: string; label: string; value: string
-  sub?: string; badge?: { text: string; type: 'up' | 'down' | 'neu' }; sm?: boolean
+  sub?: string; badge?: string; badgeType?: 'up' | 'down' | 'neu'; sm?: boolean
 }) {
   return (
     <div className={`kpi-card ${color}`}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+        <div style={{ flex: 1 }}>
           <div className="kpi-label">{label}</div>
           <div className={`kpi-value${sm ? ' sm' : ''}`}>{value}</div>
-          {sub && <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{sub}</div>}
-          {badge && <div style={{ marginTop: 8 }}><span className={`kpi-badge ${badge.type}`}>{badge.text}</span></div>}
+          {sub   && <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{sub}</div>}
+          {badge && <div style={{ marginTop: 8 }}><span className={`kpi-badge ${badgeType ?? 'neu'}`}>{badge}</span></div>}
         </div>
-        <div className={`kpi-icon ${color}`} style={{ fontSize: 20 }}>{icon}</div>
+        <div className={`kpi-icon ${color}`}>{icon}</div>
       </div>
     </div>
   )
 }
 
-function StatMini({ label, value, icon }: { label: string; value: string; icon: string }) {
+function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="card" style={{ padding: '14px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 20 }}>{icon}</span>
-        <div>
-          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: .5 }}>{label}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{value}</div>
-        </div>
+    <div className="card" style={{ marginBottom: 0 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3 }}>{subtitle}</div>}
       </div>
+      {children}
     </div>
   )
+}
+
+function FilterSelect({ label, value, options, onChange }: {
+  label: string; value: string
+  options: { v: string; l: string }[]; onChange: (v: string) => void
+}) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '7px 13px', display: 'flex', flexDirection: 'column', gap: 1, minWidth: 148 }}>
+      <label style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: .7 }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        style={{ border: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: '#0F172A', fontFamily: 'inherit', outline: 'none', cursor: 'pointer', direction: 'rtl' }}>
+        {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '7px 13px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <label style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: .7 }}>{label}</label>
+      <input type="date" value={value} onChange={e => onChange(e.target.value)}
+        style={{ border: 'none', background: 'transparent', fontSize: 12, color: '#0F172A', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }} />
+    </div>
+  )
+}
+
+function ChartSkeleton() {
+  return <div className="skeleton" style={{ height: 260, borderRadius: 8 }} />
 }
