@@ -1,7 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const url  = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-// Browser singleton — safe to import in client components
-export const supabase = createClient(url, anon)
+// Uses createBrowserClient so the session is stored in COOKIES (not localStorage).
+// This is required for the middleware to read the session on the server side.
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
