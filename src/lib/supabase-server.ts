@@ -10,9 +10,9 @@ export function createServerClient() {
   const cookieStore = cookies()
   return createSSRClient(url, anon, {
     cookies: {
-      get(name)              { return cookieStore.get(name)?.value },
-      set(name, value, opts) { try { (cookieStore as any).set({ name, value, ...opts }) } catch {} },
-      remove(name, opts)     { try { (cookieStore as any).set({ name, value: '', ...opts }) } catch {} },
+      get(name: string)                        { return cookieStore.get(name)?.value },
+      set(name: string, value: string, opts: any) { try { (cookieStore as any).set({ name, value, ...opts }) } catch {} },
+      remove(name: string, opts: any)          { try { (cookieStore as any).set({ name, value: '', ...opts }) } catch {} },
     },
   })
 }
