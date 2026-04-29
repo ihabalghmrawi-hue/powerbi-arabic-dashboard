@@ -56,16 +56,39 @@ function mapRow(row: Record<string, string>, colMap: Record<string, string>): Re
   return mapped
 }
 
+type ClearStatus = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
+
 export default function UploadPage() {
-  const [target, setTarget]     = useState<TableTarget>('employees')
-  const [status, setStatus]     = useState<UploadStatus>('idle')
-  const [drag, setDrag]         = useState(false)
-  const [preview, setPreview]   = useState<Record<string, string>[]>([])
-  const [fileName, setFileName] = useState('')
-  const [progress, setProgress] = useState(0)
-  const [message, setMessage]   = useState('')
-  const [inserted, setInserted] = useState(0)
+  const [target, setTarget]       = useState<TableTarget>('employees')
+  const [status, setStatus]       = useState<UploadStatus>('idle')
+  const [drag, setDrag]           = useState(false)
+  const [preview, setPreview]     = useState<Record<string, string>[]>([])
+  const [fileName, setFileName]   = useState('')
+  const [progress, setProgress]   = useState(0)
+  const [message, setMessage]     = useState('')
+  const [inserted, setInserted]   = useState(0)
+  const [clearStatus, setClearStatus] = useState<ClearStatus>('idle')
+  const [clearMsg, setClearMsg]   = useState('')
+  const [clearTarget, setClearTarget] = useState<'all' | 'employees' | 'customers'>('all')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  async function handleClear() {
+    setClearStatus('clearing')
+    setClearMsg('')
+    const res = await fetch('/api/clear', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: clearTarget }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      setClearStatus('error')
+      setClearMsg(json.error ?? 'فشل الحذف')
+    } else {
+      setClearStatus('done')
+      setClearMsg(json.message)
+    }
+  }
 
   const info = TABLE_INFO[target]
 
@@ -296,6 +319,108 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
+        {/* ── DANGER ZONE: Clear Data ── */}
+        <div style={{
+          marginTop: 40, border: '2px solid #FCA5A5', borderRadius: 16,
+          overflow: 'hidden',
+        }}>
+          <div style={{ background: '#FFF1F2', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 22 }}>🗑️</span>
+            <div>
+              <div style={{ fontWeight: 800, color: '#991B1B', fontSize: 15 }}>منطقة الخطر — حذف البيانات</div>
+              <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 2 }}>
+                هذا الإجراء لا يمكن التراجع عنه — سيتم حذف البيانات نهائياً من قاعدة البيانات
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px 24px', background: '#fff' }}>
+            {/* Target selector */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+              {([
+                ['all',       '🗑️ حذف كل شيء',   '#991B1B', '#FEE2E2'],
+                ['customers', '🏢 حذف العملاء فقط', '#92400E', '#FEF3C7'],
+                ['employees', '👥 حذف الموظفين فقط','#1E40AF', '#DBEAFE'],
+              ] as const).map(([val, lbl, color, bg]) => (
+                <button key={val} onClick={() => { setClearTarget(val); setClearStatus('idle'); setClearMsg('') }} style={{
+                  padding: '8px 18px', borderRadius: 99, border: '2px solid',
+                  borderColor: clearTarget === val ? color : '#E2E8F0',
+                  background: clearTarget === val ? bg : '#F8FAFC',
+                  color: clearTarget === val ? color : '#64748B',
+                  fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>{lbl}</button>
+              ))}
+            </div>
+
+            {/* Confirm + Execute */}
+            {clearStatus === 'idle' && (
+              <button onClick={() => setClearStatus('confirming')} style={{
+                padding: '10px 24px', borderRadius: 10, border: 'none',
+                background: '#FEE2E2', color: '#991B1B',
+                fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>
+                🗑️ بدء الحذف...
+              </button>
+            )}
+
+            {clearStatus === 'confirming' && (
+              <div style={{ background: '#FFF7ED', border: '1px solid #FCD34D', borderRadius: 12, padding: 16 }}>
+                <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 12, fontSize: 14 }}>
+                  ⚠️ هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={handleClear} style={{
+                    padding: '10px 24px', borderRadius: 10, border: 'none',
+                    background: '#EF4444', color: '#fff',
+                    fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    نعم، احذف الآن
+                  </button>
+                  <button onClick={() => setClearStatus('idle')} style={{
+                    padding: '10px 24px', borderRadius: 10, border: '2px solid #E2E8F0',
+                    background: '#fff', color: '#64748B',
+                    fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  }}>
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {clearStatus === 'clearing' && (
+              <div style={{ color: '#6366F1', fontWeight: 600, fontSize: 14 }}>
+                ⏳ جارٍ الحذف...
+              </div>
+            )}
+
+            {clearStatus === 'done' && (
+              <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 22 }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#15803D' }}>{clearMsg}</div>
+                  <button onClick={() => setClearStatus('idle')} style={{
+                    marginTop: 8, padding: '6px 16px', borderRadius: 8, border: 'none',
+                    background: '#DCFCE7', color: '#15803D',
+                    fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}>حسناً</button>
+                </div>
+              </div>
+            )}
+
+            {clearStatus === 'error' && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 12, padding: '14px 18px', color: '#991B1B', fontSize: 13 }}>
+                ❌ {clearMsg}
+                <button onClick={() => setClearStatus('idle')} style={{
+                  marginRight: 12, padding: '4px 12px', borderRadius: 6, border: 'none',
+                  background: '#FEE2E2', color: '#991B1B',
+                  fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
+                }}>إعادة المحاولة</button>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </>
   )
