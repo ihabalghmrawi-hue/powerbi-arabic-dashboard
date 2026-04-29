@@ -31,14 +31,15 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isAuthPage   = pathname === '/login' || pathname === '/signup'
+  const isSetupPage  = pathname === '/setup'
   const isCallback   = pathname.startsWith('/api/auth/')
 
-  // Unauthenticated → redirect to login (except auth pages + callback)
-  if (!user && !isAuthPage && !isCallback) {
+  // Unauthenticated → redirect to login (except auth/setup pages + api callbacks)
+  if (!user && !isAuthPage && !isSetupPage && !isCallback) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Already logged in → redirect away from auth pages
+  // Already logged in → redirect away from auth pages (but allow /setup)
   if (user && isAuthPage) {
     return NextResponse.redirect(new URL('/', request.url))
   }

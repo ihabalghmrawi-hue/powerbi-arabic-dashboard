@@ -8,13 +8,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('company_id, companies(name)')
-    .eq('id', user.id)
-    .single()
+  // Try to load company — if schema not set up yet, redirect to setup
+  let companyName = ''
+  try {
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('company_id, companies(name)')
+      .eq('id', user.id)
+      .single()
 
-  const companyName = (profile?.companies as any)?.name ?? 'شركتك'
+    if (error) {
+      // Table doesn't exist or no profile yet — send to setup
+      if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        redirect('/setup')
+      }
+    }
+
+    companyName = (profile?.companies as any)?.name ?? user.email?.split('@')[0] ?? ''
+  } catch {
+    redirect('/setup')
+  }
 
   return (
     <div className="app-shell">
