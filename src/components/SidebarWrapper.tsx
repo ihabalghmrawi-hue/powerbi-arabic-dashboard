@@ -3,7 +3,12 @@
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 
-export default function SidebarWrapper() {
+type Props = {
+  companyName: string
+  userEmail:   string
+}
+
+export default function SidebarWrapper({ companyName, userEmail }: Props) {
   const [collapsed, setCollapsed] = useState(false)
 
   function handleCollapse(v: boolean) {
@@ -12,5 +17,5 @@ export default function SidebarWrapper() {
     if (main) main.className = `main-content${v ? ' collapsed' : ''}`
   }
 
-  return <Sidebar onCollapse={handleCollapse} />
+  return <Sidebar onCollapse={handleCollapse} companyName={companyName} userEmail={userEmail} />
 }
