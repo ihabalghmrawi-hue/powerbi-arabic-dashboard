@@ -1,4 +1,4 @@
-import { createServerClient } from './supabase'
+import { createServerClient } from './supabase-server'
 
 export type CompanyContext = {
   userId:      string
