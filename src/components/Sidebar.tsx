@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const NAV = [
   { href: '/',          label: 'لوحة التحكم',      icon: '◈' },
@@ -11,9 +12,6 @@ const NAV = [
   { href: '/upload',    label: 'رفع البيانات',      icon: '⬆' },
   { href: '/insights',  label: 'الذكاء الاصطناعي', icon: '🤖', badge: 'AI' },
 ]
-
-import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 
 type SidebarProps = {
   onCollapse?:  (v: boolean) => void

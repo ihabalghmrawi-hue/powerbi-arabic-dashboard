@@ -1,5 +1,5 @@
 import { NextResponse }       from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase-server'
 import { getCompanyContext }  from '@/lib/auth'
 import { scoreCustomers, buildRegionGrowthScores, generateInsights } from '@/lib/aiScoring'
 

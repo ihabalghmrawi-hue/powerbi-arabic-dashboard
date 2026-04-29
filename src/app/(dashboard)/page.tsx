@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase-server'
 import { getCompanyContext } from '@/lib/auth'
 import TopBar from '@/components/TopBar'
 import DashboardClient from '@/components/Dashboard'
