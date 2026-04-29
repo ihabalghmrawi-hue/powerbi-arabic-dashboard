@@ -1,46 +1,43 @@
-import { NextResponse }        from 'next/server'
-import { createServerClient }  from '@/lib/supabase-server'
-import { getCompanyContext }   from '@/lib/auth'
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase'
 
 export async function GET() {
-  try {
-    const ctx = await getCompanyContext()
-    if (!ctx) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
+  const supabase = createServerClient()
 
-    const supabase = createServerClient()
-    const { data: customers, error } = await supabase
-      .from('customers')
-      .select('registration_date, region')
-      .eq('company_id', ctx.companyId)
-      .order('registration_date')
+  const { data: customers, error } = await supabase
+    .from('customers')
+    .select('registration_date, region')
+    .order('registration_date')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (!customers?.length) return NextResponse.json({ growth: [], regionData: [] })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Monthly cumulative growth
-    const monthly: Record<string, number> = {}
-    for (const c of customers) {
-      const month = c.registration_date.slice(0, 7)
-      monthly[month] = (monthly[month] ?? 0) + 1
-    }
-
-    let cumulative = 0
-    const growth = Object.entries(monthly)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, count]) => {
-        cumulative += count
-        return { month, new: count, total: cumulative }
-      })
-
-    // Region breakdown for pie
-    const regionMap: Record<string, number> = {}
-    for (const c of customers) {
-      regionMap[c.region] = (regionMap[c.region] ?? 0) + 1
-    }
-    const regionData = Object.entries(regionMap).map(([region, value]) => ({ region, value }))
-
-    return NextResponse.json({ growth, regionData })
-  } catch (err: unknown) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+  // Group by month → cumulative growth line
+  const byMonth: Record<string, number> = {}
+  for (const c of customers ?? []) {
+    const month = c.registration_date.slice(0, 7) // "2024-01"
+    byMonth[month] = (byMonth[month] ?? 0) + 1
   }
+
+  // Build sorted array with cumulative count
+  let cumulative = 0
+  const growth = Object.entries(byMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, count]) => {
+      cumulative += count
+      return {
+        month,
+        label: new Date(month + '-01').toLocaleDateString('ar-SA', { month: 'short', year: '2-digit' }),
+        new_customers: count,
+        total_customers: cumulative,
+      }
+    })
+
+  // Group by region for pie
+  const byRegion: Record<string, number> = {}
+  for (const c of customers ?? []) {
+    byRegion[c.region] = (byRegion[c.region] ?? 0) + 1
+  }
+  const regionData = Object.entries(byRegion).map(([name, value]) => ({ name, value }))
+
+  return NextResponse.json({ growth, regionData })
 }

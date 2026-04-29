@@ -1,9 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const NAV = [
   { href: '/',          label: 'لوحة التحكم',      icon: '◈' },
@@ -13,29 +12,14 @@ const NAV = [
   { href: '/insights',  label: 'الذكاء الاصطناعي', icon: '🤖', badge: 'AI' },
 ]
 
-type SidebarProps = {
-  onCollapse?:  (v: boolean) => void
-  companyName?: string
-  userEmail?:   string
-}
-
-export default function Sidebar({ onCollapse, companyName, userEmail }: SidebarProps) {
-  const path    = usePathname()
-  const router  = useRouter()
+export default function Sidebar({ onCollapse }: { onCollapse?: (v: boolean) => void }) {
+  const path = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false)
 
   function toggle() {
     const next = !collapsed
     setCollapsed(next)
     onCollapse?.(next)
-  }
-
-  async function handleLogout() {
-    setLoggingOut(true)
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
   }
 
   return (
@@ -49,7 +33,7 @@ export default function Sidebar({ onCollapse, companyName, userEmail }: SidebarP
       zIndex: 100, overflow: 'hidden',
       boxShadow: '0 0 40px rgba(0,0,0,.25)',
     }}>
-      {/* Logo + Company */}
+      {/* Logo */}
       <div style={{
         padding: '0 20px', height: 'var(--topbar-h)',
         display: 'flex', alignItems: 'center', gap: 12,
@@ -64,9 +48,7 @@ export default function Sidebar({ onCollapse, companyName, userEmail }: SidebarP
         }}>BI</div>
         {!collapsed && (
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
-              {companyName ?? 'لوحة التحليلات'}
-            </div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>لوحة التحليلات</div>
             <div style={{ color: 'rgba(255,255,255,.35)', fontSize: 10, whiteSpace: 'nowrap' }}>AI Analytics Platform</div>
           </div>
         )}
@@ -118,29 +100,6 @@ export default function Sidebar({ onCollapse, companyName, userEmail }: SidebarP
           )
         })}
       </nav>
-
-      {/* User + Logout */}
-      {userEmail && (
-        <div style={{ padding: '10px 10px 0', borderTop: '1px solid rgba(255,255,255,.07)', flexShrink: 0 }}>
-          {!collapsed && (
-            <div style={{ padding: '8px 12px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,.04)' }}>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,.3)', marginBottom: 2 }}>الحساب</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userEmail}</div>
-            </div>
-          )}
-          <button onClick={handleLogout} disabled={loggingOut} style={{
-            width: '100%', padding: collapsed ? 11 : '9px 12px',
-            borderRadius: 10, border: 'none', background: 'rgba(239,68,68,.15)',
-            color: '#FCA5A5', cursor: 'pointer',
-            display: 'flex', alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            gap: 10, fontSize: 12, fontFamily: 'inherit', marginBottom: 6,
-          }}>
-            <span>🚪</span>
-            {!collapsed && <span>{loggingOut ? 'جارٍ الخروج...' : 'تسجيل الخروج'}</span>}
-          </button>
-        </div>
-      )}
 
       {/* Collapse toggle */}
       <div style={{ padding: '12px 10px', borderTop: '1px solid rgba(255,255,255,.07)', flexShrink: 0 }}>

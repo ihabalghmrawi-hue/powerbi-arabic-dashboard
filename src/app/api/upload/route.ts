@@ -1,43 +1,45 @@
-import { NextResponse }       from 'next/server'
-import { createServerClient } from '@/lib/supabase-server'
-import { getCompanyContext }  from '@/lib/auth'
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase'
 
-const ALLOWED_TABLES = new Set(['employees', 'customers'])
+const ALLOWED_TABLES = ['employees', 'customers'] as const
+type AllowedTable = typeof ALLOWED_TABLES[number]
 
-function sanitizeKey(k: string) {
-  return k.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()
-}
-
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const ctx = await getCompanyContext()
-    if (!ctx) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
+    const body = await request.json()
+    const { table, rows } = body as { table: AllowedTable; rows: Record<string, string>[] }
 
-    const { table, rows } = await req.json() as { table: string; rows: Record<string, unknown>[] }
-
-    if (!ALLOWED_TABLES.has(table)) {
+    if (!ALLOWED_TABLES.includes(table)) {
       return NextResponse.json({ error: 'جدول غير مسموح به' }, { status: 400 })
     }
+
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'لا توجد بيانات للرفع' }, { status: 400 })
     }
 
-    // Sanitize column names + inject company_id
-    const sanitized = rows.map(row => {
-      const clean: Record<string, unknown> = { company_id: ctx.companyId }
+    // Sanitise: strip keys not matching expected column patterns
+    const sanitised = rows.map(row => {
+      const clean: Record<string, string> = {}
       for (const [k, v] of Object.entries(row)) {
-        clean[sanitizeKey(k)] = v
+        // Only allow alphanumeric + underscore column names
+        if (/^[a-z_]+$/.test(k) && typeof v === 'string') {
+          clean[k] = v.trim()
+        }
       }
       return clean
     })
 
     const supabase = createServerClient()
-    const { error } = await supabase.from(table).upsert(sanitized)
+    const { error } = await supabase
+      .from(table)
+      .upsert(sanitised, { onConflict: table === 'employees' ? 'employee_id' : 'customer_id' })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    return NextResponse.json({ success: true, count: sanitized.length })
-  } catch (err: unknown) {
+    return NextResponse.json({ ok: true, inserted: sanitised.length })
+  } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
